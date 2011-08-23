@@ -3,27 +3,26 @@
 #
 
 CFLAGS= `pkg-config --cflags opencv gtk+-2.0` -I. 
-LDFLAGS= `pkg-config --libs opencv gtk+-2.0` -L. -lblob 
+LDFLAGS= `pkg-config --libs opencv gtk+-2.0` -L. -lcvblob 
 ARCHFLAGS= -arch i386
 CXX=g++
 
 CPPFILES= \
-	Blob.cpp\
-	BlobResult.cpp \
-	BlobExtraction.cpp
+	cvaux.cpp\
+	cvblob.cpp\
+	cvcolor.cpp\
+	cvcontour.cpp\
+	cvlabel.cpp\
+	cvtrack.cpp
 
 .SUFFIXES: .cpp.o
 .cpp.o:	; echo 'Compiling $*.cpp' ; $(CXX) $(CFLAGS) $(ARCHFLAGS) -c $*.cpp
 
 .SILENT:
 
-libblob.a: $(CPPFILES:.cpp=.o)
-	ar ru libblob.a $(CPPFILES:.cpp=.o) 2> /dev/null
-	ranlib libblob.a
-#
-#	@echo Build tests, examples and tools...
-#	$(CXX) -g blobdemo.cpp $(LDFLAGS) $(CFLAGS) -o blobdemo
-#	$(CXX) -g blobdemo2.cpp $(LDFLAGS) $(CFLAGS) -o blobdemo2
+libcvblob.a: $(CPPFILES:.cpp=.o)
+	ar ru libcvblob.a $(CPPFILES:.cpp=.o) 2> /dev/null
+	ranlib libcvblob.a
 #
 	@echo Copy include files...
 #
@@ -35,5 +34,5 @@ all: clean
 clean:
 	@echo Cleaning...
 	rm -f $(CFILES:.cpp=.o)
-	rm -f libblob.a
+	rm -f libcvblob.a
 
