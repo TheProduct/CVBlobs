@@ -5,9 +5,6 @@
 #include "CinderOpenCv.h"
 #include "cinder/Capture.h"
 
-#include "BlobResult.h"
-#include "Blob.h"
-
 #include "cvblob.h"
 
 using namespace cvb;
@@ -19,16 +16,17 @@ using namespace std;
 class SimpleBlobDetectionApp : public AppBasic {
 public:
 	void setup();
-	void mouseMove( MouseEvent event );	
+	void mouseMove( MouseEvent );	
 	void update();
 	void draw();
-    void drawBlobs(const CvBlobs& pBlobs);
     
 private:  
+    void drawBlobsAndTracks( const CvBlobs&, const CvTracks& );
+
     Capture			mCap;
     gl::Texture		mTexture;
-    CvBlobs         blobs;
-    CvTracks        tracks;
+    CvBlobs         mBlobs;
+    CvTracks        mTracks;
     
     int             mThreshold;
 };
@@ -57,40 +55,53 @@ void SimpleBlobDetectionApp::update()
     if ( mCap && mCap.checkNewFrame() ) {
         /* get image from capture device */
         cv::Mat input( toOcv( mCap.getSurface() ) );
-        
-        /* display results */
-        mTexture = gl::Texture( mCap.getSurface() );
-        
+                
         /* make input image available for opencv */
         IplImage mInputImage = input;
         IplImage* img = &mInputImage;
         
         cvSetImageROI(img, cvRect(0, 0, 640, 480));
         
-        /* convert to greyscale */
-        IplImage* grey = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1);
-        cvCvtColor(img, grey, CV_BGR2GRAY);
-        cvThreshold(grey, grey, mThreshold, 255, CV_THRESH_BINARY);
-
-        cv::Mat mTex = grey;
-        mTexture = gl::Texture( fromOcv(mTex) );
+        /* convert to grey scale */
+        IplImage* mGreyImage = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1);
+        cvCvtColor(img, mGreyImage, CV_BGR2GRAY);
+        cvThreshold(mGreyImage, mGreyImage, mThreshold, 255, CV_THRESH_BINARY);
         
         /* track blobs */
-        IplImage *labelImg = cvCreateImage(cvGetSize(grey), IPL_DEPTH_LABEL,1);
+        cvReleaseBlobs(mBlobs);
+        cvReleaseTracks(mTracks);
+
+        IplImage* mLabelImg = cvCreateImage(cvGetSize(mGreyImage), IPL_DEPTH_LABEL,1);
         
-        unsigned int result = cvLabel(grey, labelImg, blobs);
+        unsigned int result = cvLabel(mGreyImage, mLabelImg, mBlobs);
         if (!result) {
             console() << "### problem tracking blobs." << endl;            
         }
         
-        cvFilterByArea(blobs, 5000, 50000);
-        cvUpdateTracks(blobs, tracks, 20., 30, 30);
-        
+        cvFilterByArea(mBlobs, 5000, 50000);
+        cvUpdateTracks(mBlobs, mTracks, 5., 10);
+                
+        /* display results */
+        const bool SHOW_ORIGINAL_CAPTURE = true;
+        if (SHOW_ORIGINAL_CAPTURE) {
+            if (mTexture) {
+                mTexture.update( mCap.getSurface() );
+            } else {
+                mTexture = gl::Texture( mCap.getSurface() );
+            }
+        } else {
+            cv::Mat mTex = mGreyImage;
+            if (mTexture) {
+                mTexture.update( fromOcv(mTex) );
+            } else {
+                mTexture = gl::Texture( fromOcv(mTex) );
+            }
+        }
+
         /* clean up */
-        cvReleaseImage(&grey);
-        cvReleaseImage(&labelImg);
-//        cvReleaseImage(&img);
-        
+        cvReleaseImage(&mGreyImage);
+        cvReleaseImage(&mLabelImg);
+
 //        cvReleaseBlobs(blobs);
 //        cvReleaseTracks(tracks);
     }
@@ -104,38 +115,38 @@ void SimpleBlobDetectionApp::draw()
 		gl::draw( mTexture );
     }
     
-    drawBlobs(blobs);
+    drawBlobsAndTracks(mBlobs, mTracks);
 }
 
-void SimpleBlobDetectionApp::drawBlobs(const CvBlobs& pBlobs)
+void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks)
 {
     /* iterate results */
-    for (CvBlobs::const_iterator it=blobs.begin(); it!=blobs.end(); ++it) {           
+    for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
         
         /* draw polygons */
-        CvContourPolygon* polygon = cvConvertChainCodesToPolygon(&(*it).second->contour);
+        const CvContourPolygon* polygon = cvConvertChainCodesToPolygon(&(*it).second->contour);
         gl::color(1, 0, 0, 1);
         for (int i=0; i<polygon->size(); i++) {
-            CvPoint pointA = (*polygon)[i];
-            CvPoint pointB = (*polygon)[(i + 1) % polygon->size()];
+            const CvPoint pointA = (*polygon)[i];
+            const CvPoint pointB = (*polygon)[(i + 1) % polygon->size()];
             gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
         }
         
         /* draw simplified polygons */
-        CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, 10.);
+        const CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, 10.);
         gl::color(0, 1, 0, 1);
         for (int i=0; i<sPolygon->size(); i++) {
-            CvPoint pointA = (*sPolygon)[i];
-            CvPoint pointB = (*sPolygon)[(i + 1) % sPolygon->size()];
+            const CvPoint pointA = (*sPolygon)[i];
+            const CvPoint pointB = (*sPolygon)[(i + 1) % sPolygon->size()];
             gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
         }
         
         /* draw contours */
-        CvContourPolygon* cPolygon = cvPolygonContourConvexHull(sPolygon);
+        const CvContourPolygon* cPolygon = cvPolygonContourConvexHull(sPolygon);
         gl::color(0, 0, 1, 1);
         for (int i=0; i<cPolygon->size(); i++) {
-            CvPoint pointA = (*cPolygon)[i];
-            CvPoint pointB = (*cPolygon)[(i + 1) % cPolygon->size()];
+            const CvPoint pointA = (*cPolygon)[i];
+            const CvPoint pointB = (*cPolygon)[(i + 1) % cPolygon->size()];
             gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
         }
         
@@ -146,8 +157,8 @@ void SimpleBlobDetectionApp::drawBlobs(const CvBlobs& pBlobs)
         /* draw internal contours */
         CvContoursChainCode mInternalContours = (*it).second->internalContours;
         for (CvContoursChainCode::iterator mIterator = mInternalContours.begin(); mIterator != mInternalContours.end(); ++mIterator) {
-            CvContourChainCode* mInteralContour = *mIterator;
-            CvContourPolygon* mInternalPolygon = cvConvertChainCodesToPolygon(mInteralContour);
+            const CvContourChainCode* mInteralContour = *mIterator;
+            const CvContourPolygon* mInternalPolygon = cvConvertChainCodesToPolygon(mInteralContour);
             gl::color(1, 0, 1, 1);
             for (int i=0; i<mInternalPolygon->size(); i++) {
                 CvPoint pointA = (*mInternalPolygon)[i];
@@ -159,11 +170,11 @@ void SimpleBlobDetectionApp::drawBlobs(const CvBlobs& pBlobs)
         
         /* draw tracks */
         gl::color(1, 0.5, 0, 1);
-        console() << "### tracks : " << tracks.size() << endl; 
-        for (CvTracks::const_iterator it=tracks.begin(); it!=tracks.end(); ++it) {
-            CvTrack* mTrack = it->second;
+//        console() << "### tracks : " << pTracks.size() << endl; 
+        for (CvTracks::const_iterator it=pTracks.begin(); it!=pTracks.end(); ++it) {
+            const CvTrack* mTrack = it->second;
             if (mTrack && !mTrack->inactive) {
-                const Rectf & mRect = Rectf(mTrack->minx, mTrack->miny, mTrack->maxx, mTrack->maxy);
+                const Rectf& mRect = Rectf(mTrack->minx, mTrack->miny, mTrack->maxx, mTrack->maxy);
                 gl::drawStrokedRect(mRect);
             }
         }    
