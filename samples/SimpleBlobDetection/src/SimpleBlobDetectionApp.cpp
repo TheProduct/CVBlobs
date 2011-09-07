@@ -7,6 +7,10 @@
 
 #include "cvblob.h"
 
+#include "cinder/TriMesh.h"
+#include "cinder/Triangulate.h"
+
+
 using namespace cvb;
 
 using namespace ci;
@@ -21,8 +25,11 @@ public:
 	void draw();
     
 private:  
-    void drawBlobsAndTracks( const CvBlobs&, const CvTracks& );
-
+    void        drawBlobsAndTracks( const CvBlobs&, const CvTracks& );
+    void        draw( const TriMesh2d &mesh );
+    TriMesh2d   triangulateShape(const Shape2d & mShape);
+    Shape2d     convertPolygonToShape2d(const CvContourPolygon & polygon);
+    
     Capture			mCap;
     gl::Texture		mTexture;
     CvBlobs         mBlobs;
@@ -118,8 +125,54 @@ void SimpleBlobDetectionApp::draw()
     drawBlobsAndTracks(mBlobs, mTracks);
 }
 
-void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks)
-{
+void SimpleBlobDetectionApp::draw( const TriMesh2d & mesh ) {
+	glVertexPointer( 2, GL_FLOAT, 0, &(mesh.getVertices()[0]) );
+	glEnableClientState( GL_VERTEX_ARRAY );
+        	
+	if( mesh.hasColorsRgb() ) {
+		glColorPointer( 3, GL_FLOAT, 0, &(mesh.getColorsRGB()[0]) );
+		glEnableClientState( GL_COLOR_ARRAY );
+	}
+	else if( mesh.hasColorsRgba() ) {
+		glColorPointer( 4, GL_FLOAT, 0, &(mesh.getColorsRGBA()[0]) );
+		glEnableClientState( GL_COLOR_ARRAY );
+	}
+	else 
+		glDisableClientState( GL_COLOR_ARRAY );	
+    
+	if( mesh.hasTexCoords() ) {
+		glTexCoordPointer( 2, GL_FLOAT, 0, &(mesh.getTexCoords()[0]) );
+		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+	}
+	else
+		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+	glDrawElements( GL_TRIANGLES, mesh.getNumIndices(), GL_UNSIGNED_INT, &(mesh.getIndices()[0]) );
+    
+	glDisableClientState( GL_VERTEX_ARRAY );
+	glDisableClientState( GL_NORMAL_ARRAY );
+	glDisableClientState( GL_COLOR_ARRAY );
+	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+}
+
+Shape2d SimpleBlobDetectionApp::convertPolygonToShape2d(const CvContourPolygon & polygon) {
+    Shape2d mShape;
+    const Vec2f v = Vec2f((polygon)[0].x, (polygon)[0].y);
+    mShape.moveTo(v);
+    for (int i=1; i<polygon.size(); i++) {
+        const Vec2f v = Vec2f((polygon)[i].x, (polygon)[i].y);
+        mShape.lineTo(v);
+    }  
+    return mShape;
+}
+
+TriMesh2d SimpleBlobDetectionApp::triangulateShape(const Shape2d & mShape) {
+    float mPrecision;
+    mPrecision = 1.0f;
+    TriMesh2d mesh = Triangulator( mShape, mPrecision ).calcMesh( Triangulator::WINDING_ODD );
+    return mesh;
+}
+
+void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvTracks& pTracks) {
     /* iterate results */
     for (CvBlobs::const_iterator it=pBlobs.begin(); it!=pBlobs.end(); ++it) {           
         
@@ -131,6 +184,14 @@ void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvT
             const CvPoint pointB = (*polygon)[(i + 1) % polygon->size()];
             gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
         }
+
+        /* draw triangulated polygons */
+        Shape2d mShape = convertPolygonToShape2d(*polygon);
+        gl::enableWireframe();
+        gl::color(1, 1, 1, 1);
+        TriMesh2d mMesh = triangulateShape(mShape);
+        draw(mMesh);
+        gl::disableWireframe();
         
         /* draw simplified polygons */
         const CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, 10.);
