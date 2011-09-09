@@ -184,14 +184,6 @@ void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvT
             const CvPoint pointB = (*polygon)[(i + 1) % polygon->size()];
             gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
         }
-
-        /* draw triangulated polygons */
-        Shape2d mShape = convertPolygonToShape2d(*polygon);
-        gl::enableWireframe();
-        gl::color(1, 1, 1, 1);
-        TriMesh2d mMesh = triangulateShape(mShape);
-        draw(mMesh);
-        gl::disableWireframe();
         
         /* draw simplified polygons */
         const CvContourPolygon* sPolygon = cvSimplifyPolygon(polygon, 10.);
@@ -210,11 +202,7 @@ void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvT
             const CvPoint pointB = (*cPolygon)[(i + 1) % cPolygon->size()];
             gl::drawLine(Vec2f(pointA.x, pointA.y), Vec2f(pointB.x, pointB.y));
         }
-        
-        delete polygon;
-        delete sPolygon;
-        delete cPolygon;
-        
+                
         /* draw internal contours */
         CvContoursChainCode mInternalContours = (*it).second->internalContours;
         for (CvContoursChainCode::iterator mIterator = mInternalContours.begin(); mIterator != mInternalContours.end(); ++mIterator) {
@@ -228,6 +216,32 @@ void SimpleBlobDetectionApp::drawBlobsAndTracks(const CvBlobs& pBlobs, const CvT
             }
             delete mInternalPolygon;
         }
+
+        /* draw triangulated polygons with holes (TODO: refactor) */
+        Shape2d mShape = convertPolygonToShape2d(*polygon);
+        gl::enableWireframe();
+        gl::color(1, 1, 1, 1);
+        Triangulator mTriangulator = Triangulator( mShape, 1.0 );
+        for (CvContoursChainCode::iterator mIterator = mInternalContours.begin(); mIterator != mInternalContours.end(); ++mIterator) {
+            const CvContourChainCode* mInteralContour = *mIterator;
+            const CvContourPolygon* mInternalPolygon = cvConvertChainCodesToPolygon(mInteralContour);
+            Shape2d mShape = convertPolygonToShape2d(*mInternalPolygon);
+            mTriangulator.addShape(mShape);
+            delete mInternalPolygon;
+        }
+        TriMesh2d mMesh = mTriangulator.calcMesh( Triangulator::WINDING_ODD );
+        draw(mMesh);
+        gl::disableWireframe();
+
+        /* draw triangulated polygons without holes */
+        gl::enableWireframe();
+        gl::color(1, 1, 0, 1);
+        draw(triangulateShape(convertPolygonToShape2d(*polygon)));
+        gl::disableWireframe();
+
+        delete polygon;
+        delete sPolygon;
+        delete cPolygon;
         
         /* draw tracks */
         gl::color(1, 0.5, 0, 1);
